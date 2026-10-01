@@ -174,7 +174,7 @@ function decodeCursor(cursor: string) {
   return { localDate: new Date(localDate), occurredAt: new Date(occurredAt), id };
 }
 
-export async function list(userId: string, q: ListQuery) {
+export async function list(userId: string, q: Partial<ListQuery> & { limit: number }) {
   const where: Prisma.TransactionWhereInput = {
     userId,
     kind: q.kind,
