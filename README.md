@@ -11,6 +11,8 @@ paycheck and per bill, whether your plan is holding.
 ![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white)
 ![Postgres](https://img.shields.io/badge/Postgres-Neon-4169E1?logo=postgresql&logoColor=white)
 
+**Live app: [fsdev-nelson-frontend.vercel.app](https://fsdev-nelson-frontend.vercel.app)** · API: `https://fsdev-nelson-backend.vercel.app/api/v1`
+
 > Frontend: [fsdev-nelson-frontend](https://github.com/gusanchefullstack/fsdev-nelson-frontend) ·
 > Specs: `nelson-app-v0.1` (spec-driven development with GitHub Spec Kit)
 
@@ -189,7 +191,8 @@ npm run lint && npm run typecheck
 
 ## Deployment
 
-Deployed to **Vercel** as its own project (zero-config Express). The frontend's Vercel project
+Deployed to **Vercel** as its own project (Express preset, functions in `pdx1` next to Neon us-west-2).
+Pushes to `main` deploy automatically. The frontend's Vercel project
 rewrites `/api/*` here, so session cookies stay first-party. Before the first deploy run
 `npm run db:deploy` against the production Neon branch and set the variables above in Vercel.
 
