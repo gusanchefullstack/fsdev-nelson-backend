@@ -478,6 +478,7 @@ components:
             expectedToDate: { $ref: '#/components/schemas/Money' }
             actualToDate: { $ref: '#/components/schemas/Money' }
             adjustments: { type: array, items: { type: string, enum: [END_DATE_CLIPPED] } }
+            currentBucket: { oneOf: [{ $ref: '#/components/schemas/Bucket' }, { type: 'null' }], description: Bucket open today or the next one (budget detail only) }
     Bucket:
       type: object
       properties:

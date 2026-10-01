@@ -2,7 +2,7 @@ import { firstExecutionOnOrAfter, unplannedAnchor } from '../../domain/buckets.j
 import { deleteTransactionsWhere } from '../../domain/cleanup.js';
 import { getOwnedBudget } from '../../domain/ownership.js';
 import { createItemBuckets, regenerateItemBuckets } from '../../domain/regenerate.js';
-import { serializeCategory, serializeItem } from '../../domain/serialize.js';
+import { serializeBucket, serializeCategory, serializeItem } from '../../domain/serialize.js';
 import { AppError } from '../../errors.js';
 import type { Budget, Currency } from '../../generated/prisma/client.js';
 import { newId } from '../../lib/ids.js';
@@ -99,12 +99,22 @@ export async function get(userId: string, id: string, timeZone: string) {
     include: { items: { orderBy: { createdAt: 'asc' } } },
   });
   const totals = await budgetTotals(id, today);
+  // The bucket open today (or the next one) for each item, for compact gauges
+  const todayDate = fromPlainDate(today);
+  const current = await prisma.bucket.findMany({
+    where: { item: { category: { budgetId: id } }, endDate: { gte: todayDate } },
+    orderBy: { startDate: 'asc' },
+    distinct: ['itemId'],
+  });
+  const currentByItem = new Map(current.map((b) => [b.itemId, serializeBucket(b, budget.currency, today)]));
   return {
     ...serializeSummary(budget, timeZone, totals.budget),
     categories: categories.map((c) =>
       serializeCategory(
         c,
-        c.items.map((i) => serializeItem(i, { kind: c.kind, currency: budget.currency }, totals.items.get(i.id) ?? {})),
+        c.items.map((i) =>
+          serializeItem(i, { kind: c.kind, currency: budget.currency }, { ...totals.items.get(i.id), currentBucket: currentByItem.get(i.id) ?? null }),
+        ),
       ),
     ),
   };
