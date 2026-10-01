@@ -493,7 +493,13 @@ components:
         status: { type: string, enum: [PAST, CURRENT, FUTURE] }
         over: { type: boolean }
     BudgetItemWithBuckets:
-      allOf: [{ $ref: '#/components/schemas/BudgetItem' }, { type: object, properties: { buckets: { type: array, items: { $ref: '#/components/schemas/Bucket' } } } }]
+      allOf:
+        - $ref: '#/components/schemas/BudgetItem'
+        - type: object
+          properties:
+            budgetId: { type: string, format: uuid }
+            categoryName: { type: string }
+            buckets: { type: array, items: { $ref: '#/components/schemas/Bucket' } }
     CategoryInput:
       type: object
       required: [kind, name]
