@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { userIdOf } from '../../middleware/auth.js';
-import { validate } from '../../middleware/validate.js';
+import { bodyOf, validate } from '../../middleware/validate.js';
 import { avatarUpload, storeAvatar } from './avatar.js';
 import { preferencesSchema, profileSchema } from './schemas.js';
 import * as service from './service.js';
@@ -13,11 +13,11 @@ meRouter.get('/me', async (_req, res) => {
 });
 
 meRouter.put('/me/profile', validate({ body: profileSchema }), async (req, res) => {
-  res.json(await service.upsertProfile(userIdOf(res.locals), req.body));
+  res.json(await service.upsertProfile(userIdOf(res.locals), bodyOf(req, profileSchema)));
 });
 
 meRouter.patch('/me/preferences', validate({ body: preferencesSchema }), async (req, res) => {
-  await service.updateTheme(userIdOf(res.locals), (req.body as { theme: 'SYSTEM' | 'LIGHT' | 'DARK' }).theme);
+  await service.updateTheme(userIdOf(res.locals), bodyOf(req, preferencesSchema).theme);
   res.status(204).end();
 });
 

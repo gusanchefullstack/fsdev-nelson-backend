@@ -16,3 +16,6 @@ export const validate =
     if (schemas.body) req.body = schemas.body.parse(req.body ?? {});
     next();
   };
+
+/** Typed access to a body already validated by `validate({ body: schema })`. */
+export const bodyOf = <S extends z.ZodType>(req: { body: unknown }, _schema: S): z.infer<S> => req.body as z.infer<S>;
