@@ -1,0 +1,697 @@
+openapi: 3.1.0
+info:
+  title: Nelson API
+  version: 1.0.0
+  description: |
+    REST API for the Nelson budget app (feature 001-core-budget-management).
+    - Base path `/api/v1`. Authentication routes are served by Better Auth under `/api/auth/*`
+      (sign-up/email, sign-in/email, sign-in/username, sign-out, get-session) and are not repeated here.
+    - PUT replaces a resource with a full body; PATCH accepts a partial body.
+    - All `/api/v1` routes require a session cookie (401 otherwise) and a completed profile
+      (403 PROFILE_INCOMPLETE otherwise), except `/me` and `/me/profile`.
+    - Money is a decimal string (e.g. "5000.00"). Dates are ISO `YYYY-MM-DD`; instants are ISO 8601
+      with offset. Data model: ../data-model.md.
+    - Every error uses the `Error` schema; messages are user-friendly (constitution Principle IV).
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+
+paths:
+  /me:
+    get:
+      summary: Current user with profile (profile is null until completed)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+  /me/profile:
+    put:
+      summary: Create or replace the profile (FR-003)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /me/avatar:
+    put:
+      summary: Upload avatar photo (JPEG/PNG/WebP, max 2 MB) (FR-004)
+      requestBody:
+        required: true
+        content: { multipart/form-data: { schema: { type: object, properties: { file: { type: string, format: binary } }, required: [file] } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { avatarUrl: { type: string } } } } } }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /me/preferences:
+    patch:
+      summary: Update theme preference (FR-045)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { theme: { $ref: '#/components/schemas/Theme' } }, required: [theme] } } } }
+      responses:
+        '204': { description: Updated }
+
+  /financial-accounts:
+    get:
+      summary: List financial accounts
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/FinancialAccount' } } } } } } }
+    post:
+      summary: Create financial account (FR-007)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinancialAccountInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/FinancialAccount' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /financial-accounts/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Get financial account
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FinancialAccount' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    put:
+      summary: Update financial account (currency locked once used)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/FinancialAccountInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FinancialAccount' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete financial account; 409 IN_USE if referenced (FR-011)
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /payors:
+    get:
+      summary: List payors
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Payor' } } } } } } }
+    post:
+      summary: Create payor (FR-009)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PayorInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Payor' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /payors/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Get payor
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Payor' } } } }
+    put:
+      summary: Update payor
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/PayorInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Payor' } } } }
+    delete:
+      summary: Delete payor; 409 IN_USE if referenced (FR-011)
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /vendors:
+    get:
+      summary: List vendors
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Vendor' } } } } } } }
+    post:
+      summary: Create vendor (FR-010)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VendorInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Vendor' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /vendors/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Get vendor
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Vendor' } } } }
+    put:
+      summary: Update vendor
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VendorInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Vendor' } } } }
+    delete:
+      summary: Delete vendor; 409 IN_USE if referenced (FR-011)
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Error' }
+
+  /budgets:
+    get:
+      summary: List budgets with totals to date
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/BudgetSummary' } } } } } } }
+    post:
+      summary: Create a budget (Lite = no categories; Guided/Complete = full tree in one atomic request) (FR-022)
+      description: System "Unplanned" categories/items are always added (FR-033). 409 BUDGET_OVERLAP (FR-014).
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetCreateInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetDetail' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /budgets/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Budget tree with categories, items and per-item totals
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetDetail' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      summary: Update name, description, dates, alert threshold (currency immutable)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetUpdateInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetDetail' } } } }
+        '409': { description: BUDGET_OVERLAP or TRANSACTIONS_OUT_OF_RANGE, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    delete:
+      summary: Delete budget and everything under it (FR-020)
+      responses:
+        '204': { description: Deleted }
+  /budgets/{id}/deletion-impact:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Counts shown in the delete confirmation (FR-020)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DeletionImpact' } } } }
+
+  /budgets/{id}/categories:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Create category (FR-015)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /categories/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      summary: Rename/describe category; 409 SYSTEM_RECORD for Unplanned
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { name: { type: string }, description: { type: [string, 'null'] } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete category and its items/transactions; 409 SYSTEM_RECORD for Unplanned
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Error' }
+  /categories/{id}/deletion-impact:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Counts shown in the delete confirmation
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DeletionImpact' } } } }
+
+  /categories/{id}/items:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      summary: Create budget item; buckets generated (FR-016, FR-023)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetItemInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetItem' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /items/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Item with its buckets
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetItemWithBuckets' } } } }
+    put:
+      summary: Update item; buckets regenerated and transactions re-allocated (409 TRANSACTIONS_OUT_OF_RANGE)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetItemInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetItemWithBuckets' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete item, buckets and transactions; 409 SYSTEM_RECORD for Unplanned
+      responses:
+        '204': { description: Deleted }
+        '409': { $ref: '#/components/responses/Error' }
+  /items/{id}/deletion-impact:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Counts shown in the delete confirmation
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DeletionImpact' } } } }
+
+  /transactions:
+    get:
+      summary: List transactions, newest first (FR-034)
+      parameters:
+        - { name: budgetId, in: query, schema: { type: string, format: uuid } }
+        - { name: itemId, in: query, schema: { type: string, format: uuid } }
+        - { name: kind, in: query, schema: { $ref: '#/components/schemas/FlowKind' } }
+        - { name: financialAccountId, in: query, schema: { type: string, format: uuid } }
+        - { name: payorId, in: query, schema: { type: string, format: uuid } }
+        - { name: vendorId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Transaction' } }, nextCursor: { type: [string, 'null'] } } } } }
+    post:
+      summary: Record a transaction; allocated to a bucket (FR-026–FR-032)
+      description: 422 CURRENCY_MISMATCH, OUTSIDE_ITEM_RANGE, KIND_MISMATCH. Response includes alerts raised by this write.
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionInput' } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionWriteResult' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /transactions/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Get transaction
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Transaction' } } } }
+    put:
+      summary: Update transaction; buckets and balances recalculated
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TransactionWriteResult' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+    delete:
+      summary: Delete transaction; buckets and balances recalculated
+      responses:
+        '204': { description: Deleted }
+
+  /dashboard:
+    get:
+      summary: Dashboard summary (FR-035); also evaluates ended income buckets (research R9)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Dashboard' } } } }
+
+  /budgets/{id}/reports/forecast-vs-actual:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { name: level, in: query, required: true, schema: { type: string, enum: [budget, category, item] } }
+      - { name: targetId, in: query, description: category or item id when level != budget, schema: { type: string, format: uuid } }
+    get:
+      summary: Expected vs actual per month (FR-038)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ForecastVsActual' } } } }
+  /budgets/{id}/reports/top:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { name: n, in: query, schema: { type: integer, enum: [5, 10], default: 5 } }
+      - { name: by, in: query, schema: { type: string, enum: [item, counterparty], default: item } }
+      - { name: from, in: query, schema: { type: string, format: date } }
+      - { name: to, in: query, schema: { type: string, format: date } }
+    get:
+      summary: Top N incomes and expenses (FR-038)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/TopN' } } } }
+  /budgets/{id}/reports/projection:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Projected end-of-period totals per item and budget, plus unbudgeted totals (FR-039, FR-033a)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Projection' } } } }
+  /budgets/{id}/reports/insights:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      summary: Items consistently deviating from estimate (FR-040)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Insight' } } } } } } }
+
+  /alerts:
+    get:
+      summary: List alerts (excludes dismissed)
+      parameters:
+        - { name: unreadOnly, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { data: { type: array, items: { $ref: '#/components/schemas/Alert' } }, unreadCount: { type: integer } } } } } }
+  /alerts/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      summary: Mark read or dismiss (FR-043)
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { read: { type: boolean }, dismissed: { type: boolean } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Alert' } } } }
+  /alerts/read-all:
+    post:
+      summary: Mark all alerts read
+      responses:
+        '204': { description: Done }
+
+components:
+  securitySchemes:
+    sessionCookie: { type: apiKey, in: cookie, name: better-auth.session_token }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  responses:
+    Error:
+      description: Error with a user-friendly message
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                UNAUTHENTICATED, PROFILE_INCOMPLETE, NOT_FOUND, VALIDATION_FAILED, IN_USE, SYSTEM_RECORD,
+                BUDGET_OVERLAP, TRANSACTIONS_OUT_OF_RANGE, OUTSIDE_ITEM_RANGE, CURRENCY_MISMATCH,
+                KIND_MISMATCH, FILE_TOO_LARGE, RATE_LIMITED, INTERNAL_ERROR
+            message: { type: string, description: 'Friendly; safe to display' }
+            fields: { type: object, additionalProperties: { type: string }, description: Per-field messages }
+            requestId: { type: string }
+    Money: { type: string, pattern: '^-?\d{1,12}(\.\d{1,2})?$', examples: ['5000.00'] }
+    Currency: { type: string, enum: [USD, COP] }
+    Theme: { type: string, enum: [SYSTEM, LIGHT, DARK] }
+    FlowKind: { type: string, enum: [INCOME, EXPENSE] }
+    Frequency: { type: string, enum: [ONE_TIME, DAILY, WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, ANNUALLY, CUSTOM] }
+    Timestamps:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ContactFields:
+      type: object
+      properties:
+        address: { type: [string, 'null'] }
+        city: { type: [string, 'null'] }
+        postalCode: { type: [string, 'null'] }
+        state: { type: [string, 'null'] }
+        country: { type: [string, 'null'], description: ISO 3166-1 alpha-2 }
+        phone: { type: [string, 'null'], description: E.164 }
+
+    ProfileInput:
+      type: object
+      required: [firstName, lastName, username, address, city, postalCode, state, country, phone, timeZone, avatarUrl]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        username: { type: string }
+        address: { type: string }
+        city: { type: string }
+        postalCode: { type: string }
+        state: { type: string }
+        country: { type: string }
+        phone: { type: string }
+        timeZone: { type: string, examples: [America/Bogota] }
+        avatarUrl: { type: string }
+    Me:
+      type: object
+      properties:
+        id: { type: string }
+        email: { type: string }
+        username: { type: string }
+        theme: { $ref: '#/components/schemas/Theme' }
+        profile: { oneOf: [{ $ref: '#/components/schemas/ProfileInput' }, { type: 'null' }] }
+
+    FinancialAccountInput:
+      allOf:
+        - $ref: '#/components/schemas/ContactFields'
+        - type: object
+          required: [name, type, currency, openingBalance]
+          properties:
+            name: { type: string }
+            description: { type: [string, 'null'] }
+            type: { type: string, enum: [CHECKING, SAVINGS, CREDIT_CARD, CASH, DIGITAL_WALLET, BROKERAGE, LOAN, OTHER] }
+            currency: { $ref: '#/components/schemas/Currency' }
+            openingBalance: { $ref: '#/components/schemas/Money' }
+    FinancialAccount:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/FinancialAccountInput'
+        - type: object
+          properties:
+            currentBalance: { $ref: '#/components/schemas/Money' }
+            inUse: { type: boolean }
+    PayorInput:
+      allOf:
+        - $ref: '#/components/schemas/ContactFields'
+        - type: object
+          required: [name, type, currency]
+          properties:
+            name: { type: string }
+            description: { type: [string, 'null'] }
+            type: { type: string, enum: [EMPLOYER, INVESTMENTS, RENTAL, BUSINESS_CLIENT, GOVERNMENT_BENEFITS, OTHER] }
+            currency: { $ref: '#/components/schemas/Currency' }
+    Payor:
+      allOf: [{ $ref: '#/components/schemas/Timestamps' }, { $ref: '#/components/schemas/PayorInput' }, { type: object, properties: { inUse: { type: boolean } } }]
+    VendorInput:
+      allOf:
+        - $ref: '#/components/schemas/ContactFields'
+        - type: object
+          required: [name, type, currency]
+          properties:
+            name: { type: string }
+            description: { type: [string, 'null'] }
+            type: { type: string, enum: [UTILITY, SUBSCRIPTION, RETAIL, GROCERIES, RESTAURANT, HOUSING, HEALTHCARE, INSURANCE, TRANSPORTATION, GOVERNMENT_TAXES, OTHER] }
+            currency: { $ref: '#/components/schemas/Currency' }
+    Vendor:
+      allOf: [{ $ref: '#/components/schemas/Timestamps' }, { $ref: '#/components/schemas/VendorInput' }, { type: object, properties: { inUse: { type: boolean } } }]
+
+    BudgetItemInput:
+      type: object
+      required: [name, description, estimatedAmount, estimatedExecutionDate, frequency]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        startDate: { type: string, format: date, description: Defaults to budget start }
+        endDate: { type: string, format: date, description: Defaults to budget end; clipped if beyond }
+        estimatedAmount: { $ref: '#/components/schemas/Money' }
+        estimatedExecutionDate: { type: string, format: date }
+        frequency: { $ref: '#/components/schemas/Frequency' }
+        customInterval: { type: [integer, 'null'] }
+        customUnit: { type: [string, 'null'], enum: [DAYS, MONTHS, null] }
+    BudgetItem:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/BudgetItemInput'
+        - type: object
+          properties:
+            categoryId: { type: string, format: uuid }
+            kind: { $ref: '#/components/schemas/FlowKind' }
+            currency: { $ref: '#/components/schemas/Currency' }
+            isSystem: { type: boolean }
+            expectedToDate: { $ref: '#/components/schemas/Money' }
+            actualToDate: { $ref: '#/components/schemas/Money' }
+            adjustments: { type: array, items: { type: string, enum: [END_DATE_CLIPPED] } }
+    Bucket:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sequence: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        estimatedExecutionDate: { type: string, format: date }
+        estimatedAmount: { $ref: '#/components/schemas/Money' }
+        actualAmount: { $ref: '#/components/schemas/Money' }
+        actualDate: { type: [string, 'null'], format: date }
+        currency: { $ref: '#/components/schemas/Currency' }
+        status: { type: string, enum: [PAST, CURRENT, FUTURE] }
+        over: { type: boolean }
+    BudgetItemWithBuckets:
+      allOf: [{ $ref: '#/components/schemas/BudgetItem' }, { type: object, properties: { buckets: { type: array, items: { $ref: '#/components/schemas/Bucket' } } } }]
+    CategoryInput:
+      type: object
+      required: [kind, name]
+      properties:
+        kind: { $ref: '#/components/schemas/FlowKind' }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+    Category:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/CategoryInput'
+        - type: object
+          properties:
+            budgetId: { type: string, format: uuid }
+            isSystem: { type: boolean }
+            items: { type: array, items: { $ref: '#/components/schemas/BudgetItem' } }
+    BudgetCreateInput:
+      type: object
+      required: [name, currency, startDate, endDate]
+      properties:
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        currency: { $ref: '#/components/schemas/Currency' }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        alertThresholdPct: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        mode: { type: string, enum: [LITE, GUIDED, COMPLETE], default: LITE }
+        categories:
+          type: array
+          description: Guided/Complete only. Saved atomically with the budget.
+          items:
+            allOf:
+              - $ref: '#/components/schemas/CategoryInput'
+              - type: object
+                properties: { items: { type: array, items: { $ref: '#/components/schemas/BudgetItemInput' } } }
+    BudgetUpdateInput:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        alertThresholdPct: { type: integer, minimum: 1, maximum: 100 }
+    BudgetSummary:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - type: object
+          properties:
+            name: { type: string }
+            description: { type: [string, 'null'] }
+            currency: { $ref: '#/components/schemas/Currency' }
+            startDate: { type: string, format: date }
+            endDate: { type: string, format: date }
+            alertThresholdPct: { type: integer }
+            isActive: { type: boolean, description: today within dates }
+            totals: { $ref: '#/components/schemas/Totals' }
+    BudgetDetail:
+      allOf:
+        - $ref: '#/components/schemas/BudgetSummary'
+        - type: object
+          properties:
+            categories: { type: array, items: { $ref: '#/components/schemas/Category' } }
+    Totals:
+      type: object
+      properties:
+        expectedIncomeToDate: { $ref: '#/components/schemas/Money' }
+        actualIncomeToDate: { $ref: '#/components/schemas/Money' }
+        expectedExpenseToDate: { $ref: '#/components/schemas/Money' }
+        actualExpenseToDate: { $ref: '#/components/schemas/Money' }
+        unbudgetedIncome: { $ref: '#/components/schemas/Money' }
+        unbudgetedExpense: { $ref: '#/components/schemas/Money' }
+    DeletionImpact:
+      type: object
+      properties:
+        categories: { type: integer }
+        items: { type: integer }
+        buckets: { type: integer }
+        transactions: { type: integer }
+
+    TransactionInput:
+      type: object
+      required: [kind, amount, currency, occurredAt, itemId, financialAccountId]
+      properties:
+        kind: { $ref: '#/components/schemas/FlowKind' }
+        amount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        occurredAt: { type: string, format: date-time, description: Local date-time with offset }
+        timeZone: { type: string, description: 'IANA zone. Create: defaults to the profile zone. Update: omitted = keep the stored zone (FR-031)' }
+        itemId: { type: string, format: uuid }
+        financialAccountId: { type: string, format: uuid }
+        payorId: { type: [string, 'null'], format: uuid, description: Required for INCOME }
+        vendorId: { type: [string, 'null'], format: uuid, description: Required for EXPENSE }
+        note: { type: [string, 'null'] }
+    Transaction:
+      allOf:
+        - $ref: '#/components/schemas/Timestamps'
+        - $ref: '#/components/schemas/TransactionInput'
+        - type: object
+          properties:
+            timeZone: { type: string }
+            localDate: { type: string, format: date }
+            bucketId: { type: string, format: uuid }
+            budgetId: { type: string, format: uuid }
+            itemName: { type: string }
+            origin: { type: object, properties: { id: { type: string }, name: { type: string }, type: { type: string, enum: [PAYOR, FINANCIAL_ACCOUNT] } } }
+            destination: { type: object, properties: { id: { type: string }, name: { type: string }, type: { type: string, enum: [VENDOR, FINANCIAL_ACCOUNT] } } }
+    TransactionWriteResult:
+      type: object
+      properties:
+        transaction: { $ref: '#/components/schemas/Transaction' }
+        bucket: { $ref: '#/components/schemas/Bucket' }
+        newAlerts: { type: array, items: { $ref: '#/components/schemas/Alert' } }
+
+    Alert:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [ITEM_EXPENSE_OVER, ITEM_INCOME_UNDER, BUDGET_EXPENSE_OVER, BUDGET_INCOME_UNDER] }
+        budgetId: { type: string, format: uuid }
+        budgetName: { type: string }
+        itemId: { type: [string, 'null'], format: uuid }
+        itemName: { type: [string, 'null'] }
+        bucketId: { type: [string, 'null'], format: uuid }
+        expectedAmount: { $ref: '#/components/schemas/Money' }
+        actualAmount: { $ref: '#/components/schemas/Money' }
+        currency: { $ref: '#/components/schemas/Currency' }
+        thresholdPct: { type: integer }
+        message: { type: string, description: Friendly text ready to display }
+        read: { type: boolean }
+        cleared: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Dashboard:
+      type: object
+      properties:
+        activeBudgets: { type: array, items: { $ref: '#/components/schemas/BudgetSummary' } }
+        recentTransactions: { type: array, maxItems: 10, items: { $ref: '#/components/schemas/Transaction' } }
+        financialAccounts: { type: array, items: { $ref: '#/components/schemas/FinancialAccount' } }
+        unreadAlerts: { type: array, items: { $ref: '#/components/schemas/Alert' } }
+        unreadAlertCount: { type: integer }
+    ForecastVsActual:
+      type: object
+      properties:
+        currency: { $ref: '#/components/schemas/Currency' }
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              period: { type: string, description: YYYY-MM }
+              kind: { $ref: '#/components/schemas/FlowKind' }
+              expected: { $ref: '#/components/schemas/Money' }
+              actual: { $ref: '#/components/schemas/Money' }
+    TopN:
+      type: object
+      properties:
+        currency: { $ref: '#/components/schemas/Currency' }
+        incomes: { type: array, items: { $ref: '#/components/schemas/RankedAmount' } }
+        expenses: { type: array, items: { $ref: '#/components/schemas/RankedAmount' } }
+    RankedAmount:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        amount: { $ref: '#/components/schemas/Money' }
+        sharePct: { type: number }
+    Projection:
+      type: object
+      properties:
+        currency: { $ref: '#/components/schemas/Currency' }
+        income: { $ref: '#/components/schemas/ProjectionTotals' }
+        expense: { $ref: '#/components/schemas/ProjectionTotals' }
+        items:
+          type: array
+          items:
+            allOf:
+              - $ref: '#/components/schemas/ProjectionTotals'
+              - type: object
+                properties:
+                  itemId: { type: string, format: uuid }
+                  name: { type: string }
+                  kind: { $ref: '#/components/schemas/FlowKind' }
+                  isSystem: { type: boolean }
+                  ratio: { type: number }
+    ProjectionTotals:
+      type: object
+      properties:
+        planned: { $ref: '#/components/schemas/Money' }
+        actualToDate: { $ref: '#/components/schemas/Money' }
+        projected: { $ref: '#/components/schemas/Money' }
+        unbudgeted: { $ref: '#/components/schemas/Money' }
+    Insight:
+      type: object
+      properties:
+        itemId: { type: string, format: uuid }
+        itemName: { type: string }
+        kind: { $ref: '#/components/schemas/FlowKind' }
+        deviatingBuckets: { type: integer }
+        completedBuckets: { type: integer }
+        averageDeviationPct: { type: number }
+        suggestion: { type: string, description: e.g. "Netflix was over its estimate in 3 of 4 months. Consider raising the estimate to $22.00 or reviewing the subscription." }
