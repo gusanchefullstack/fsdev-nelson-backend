@@ -1,7 +1,7 @@
 import { budgetBreach, bucketBreach } from '../../domain/alerts.js';
 import { setAlertHook } from '../../domain/hooks.js';
 import { notFound } from '../../errors.js';
-import type { AlertType, Currency } from '../../generated/prisma/client.js';
+import { Prisma, type AlertType, type Currency } from '../../generated/prisma/client.js';
 import { newId } from '../../lib/ids.js';
 import { prisma, type Tx } from '../../lib/prisma.js';
 import { fromPlainDate, todayIn } from '../../lib/temporal.js';
@@ -69,23 +69,42 @@ function serialize(a: AlertRow) {
   };
 }
 
-/** Raises the alert if no active one exists for this condition, or clears it when the condition is gone. */
-async function setCondition(
-  tx: Tx,
-  c: { userId: string; budgetId: string; bucketId: string | null; type: AlertType; breach: boolean; expected: number; actual: number; thresholdPct: number },
-): Promise<string | null> {
-  if (!c.breach) {
-    await tx.alert.updateMany({ where: { budgetId: c.budgetId, bucketId: c.bucketId, type: c.type, clearedAt: null }, data: { clearedAt: new Date() } });
-    return null;
+interface Condition {
+  userId: string;
+  budgetId: string;
+  bucketId: string | null;
+  type: AlertType;
+  breach: boolean;
+  expected: number;
+  actual: number;
+  thresholdPct: number;
+}
+
+/**
+ * Applies many conditions in a constant number of queries: clears the ones no longer breached and
+ * raises the breached ones that have no active alert yet (one active alert per condition, FR-042).
+ */
+async function applyConditions(tx: Tx, conditions: Condition[]): Promise<string[]> {
+  const cleared = conditions.filter((c) => !c.breach);
+  if (cleared.length) {
+    await tx.alert.updateMany({
+      where: { clearedAt: null, OR: cleared.map((c) => ({ budgetId: c.budgetId, bucketId: c.bucketId, type: c.type })) },
+      data: { clearedAt: new Date() },
+    });
   }
-  const id = newId();
-  // ON CONFLICT keeps one active alert per condition (unique index alert_active_unique) without aborting the transaction
+  const raised = conditions.filter((c) => c.breach);
+  if (!raised.length) return [];
+  const values = raised.map(
+    (c) =>
+      Prisma.sql`(${newId()}::uuid, ${c.userId}::uuid, ${c.budgetId}::uuid, ${c.bucketId}::uuid, ${c.type}::"AlertType", ${c.expected}, ${c.actual}, ${c.thresholdPct}, now(), now())`,
+  );
+  // ON CONFLICT skips conditions that already have an active alert (unique index alert_active_unique)
   const inserted = await tx.$queryRaw<{ id: string }[]>`
     INSERT INTO "Alert" (id, "userId", "budgetId", "bucketId", type, "expectedAmount", "actualAmount", "thresholdPct", "createdAt", "updatedAt")
-    VALUES (${id}::uuid, ${c.userId}::uuid, ${c.budgetId}::uuid, ${c.bucketId}::uuid, ${c.type}::"AlertType", ${c.expected}, ${c.actual}, ${c.thresholdPct}, now(), now())
+    VALUES ${Prisma.join(values)}
     ON CONFLICT DO NOTHING
     RETURNING id`;
-  return inserted[0]?.id ?? null;
+  return inserted.map((r) => r.id);
 }
 
 async function budgetContext(tx: Tx, budgetId: string) {
@@ -100,26 +119,24 @@ async function evaluateBudget(tx: Tx, budgetId: string, ctx: Awaited<ReturnType<
     where: { item: { category: { budgetId } } },
     select: { startDate: true, endDate: true, estimatedAmount: true, actualAmount: true, item: { select: { category: { select: { kind: true } } } } },
   });
-  const created: (string | null)[] = [];
+  const conditions: Condition[] = [];
   for (const kind of ['EXPENSE', 'INCOME'] as const) {
     const rows = buckets.filter((b) => b.item.category.kind === kind && (kind === 'EXPENSE' ? b.startDate <= ctx.today : b.endDate < ctx.today));
     const expected = rows.reduce((s, b) => s + b.estimatedAmount.toNumber(), 0);
     // Expense actuals count everything recorded, including Unplanned (FR-033a)
     const actual = (kind === 'EXPENSE' ? buckets.filter((b) => b.item.category.kind === kind) : rows).reduce((s, b) => s + b.actualAmount.toNumber(), 0);
-    created.push(
-      await setCondition(tx, {
-        userId: ctx.userId,
-        budgetId,
-        bucketId: null,
-        type: kind === 'EXPENSE' ? 'BUDGET_EXPENSE_OVER' : 'BUDGET_INCOME_UNDER',
-        breach: budgetBreach({ kind, expected, actual, thresholdPct: ctx.alertThresholdPct }),
-        expected,
-        actual,
-        thresholdPct: ctx.alertThresholdPct,
-      }),
-    );
+    conditions.push({
+      userId: ctx.userId,
+      budgetId,
+      bucketId: null,
+      type: kind === 'EXPENSE' ? 'BUDGET_EXPENSE_OVER' : 'BUDGET_INCOME_UNDER',
+      breach: budgetBreach({ kind, expected, actual, thresholdPct: ctx.alertThresholdPct }),
+      expected,
+      actual,
+      thresholdPct: ctx.alertThresholdPct,
+    });
   }
-  return created;
+  return conditions;
 }
 
 /** Re-evaluates the touched buckets and the budget after any money change (research R9). Returns new alerts. */
@@ -129,26 +146,23 @@ export async function evaluateAfterWrite(tx: Tx, budgetId: string, bucketIds: st
     where: { id: { in: bucketIds } },
     select: { id: true, endDate: true, estimatedAmount: true, actualAmount: true, item: { select: { category: { select: { kind: true } } } } },
   });
-  const created: (string | null)[] = [];
-  for (const b of buckets) {
+  const conditions: Condition[] = buckets.map((b) => {
     const kind = b.item.category.kind;
     const expected = b.estimatedAmount.toNumber();
     const actual = b.actualAmount.toNumber();
-    created.push(
-      await setCondition(tx, {
-        userId: ctx.userId,
-        budgetId,
-        bucketId: b.id,
-        type: kind === 'EXPENSE' ? 'ITEM_EXPENSE_OVER' : 'ITEM_INCOME_UNDER',
-        breach: bucketBreach({ kind, expected, actual, thresholdPct: ctx.alertThresholdPct, ended: b.endDate < ctx.today }),
-        expected,
-        actual,
-        thresholdPct: ctx.alertThresholdPct,
-      }),
-    );
-  }
-  created.push(...(await evaluateBudget(tx, budgetId, ctx)));
-  const ids = created.filter((x): x is string => x !== null);
+    return {
+      userId: ctx.userId,
+      budgetId,
+      bucketId: b.id,
+      type: kind === 'EXPENSE' ? 'ITEM_EXPENSE_OVER' : 'ITEM_INCOME_UNDER',
+      breach: bucketBreach({ kind, expected, actual, thresholdPct: ctx.alertThresholdPct, ended: b.endDate < ctx.today }),
+      expected,
+      actual,
+      thresholdPct: ctx.alertThresholdPct,
+    };
+  });
+  conditions.push(...(await evaluateBudget(tx, budgetId, ctx)));
+  const ids = await applyConditions(tx, conditions);
   if (!ids.length) return [];
   const rows = await tx.alert.findMany({ where: { id: { in: ids } }, include, orderBy: { createdAt: 'asc' } });
   return (rows as unknown as AlertRow[]).map(serialize);

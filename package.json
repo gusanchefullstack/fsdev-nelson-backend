@@ -17,7 +17,8 @@
     "test:integration": "vitest run --project integration",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "perf": "NODE_ENV=development LOG_LEVEL=warn tsx --env-file=.env scripts/seed-perf.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",
