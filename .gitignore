@@ -12,3 +12,4 @@ coverage/
 Thumbs.db
 .vscode/
 .idea/
+src/generated/

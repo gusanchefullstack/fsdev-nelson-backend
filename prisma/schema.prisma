@@ -1,0 +1,387 @@
+// Nelson data model — see specs/001-core-budget-management/data-model.md
+// Every model has id (UUID v7, generated in the app), createdAt and updatedAt (FR-050).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Enums ----------
+
+enum Currency {
+  USD
+  COP
+}
+
+enum Theme {
+  SYSTEM
+  LIGHT
+  DARK
+}
+
+enum FinancialAccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+  CASH
+  DIGITAL_WALLET
+  BROKERAGE
+  LOAN
+  OTHER
+}
+
+enum PayorType {
+  EMPLOYER
+  INVESTMENTS
+  RENTAL
+  BUSINESS_CLIENT
+  GOVERNMENT_BENEFITS
+  OTHER
+}
+
+enum VendorType {
+  UTILITY
+  SUBSCRIPTION
+  RETAIL
+  GROCERIES
+  RESTAURANT
+  HOUSING
+  HEALTHCARE
+  INSURANCE
+  TRANSPORTATION
+  GOVERNMENT_TAXES
+  OTHER
+}
+
+enum FlowKind {
+  INCOME
+  EXPENSE
+}
+
+enum Frequency {
+  ONE_TIME
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  ANNUALLY
+  CUSTOM
+}
+
+enum CustomUnit {
+  DAYS
+  MONTHS
+}
+
+enum AlertType {
+  ITEM_EXPENSE_OVER
+  ITEM_INCOME_UNDER
+  BUDGET_EXPENSE_OVER
+  BUDGET_INCOME_UNDER
+}
+
+// ---------- Identity (Better Auth tables + Nelson fields) ----------
+
+model User {
+  id              String   @id @db.Uuid
+  name            String
+  email           String   @unique
+  emailVerified   Boolean  @default(false)
+  image           String?
+  username        String?  @unique
+  displayUsername String?
+  theme           Theme    @default(SYSTEM)
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @updatedAt @db.Timestamptz(3)
+
+  sessions          Session[]
+  accounts          Account[]
+  profile           Profile?
+  financialAccounts FinancialAccount[]
+  payors            Payor[]
+  vendors           Vendor[]
+  budgets           Budget[]
+  transactions      Transaction[]
+  alerts            Alert[]
+}
+
+model Session {
+  id        String   @id @db.Uuid
+  token     String   @unique
+  expiresAt DateTime @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+// Better Auth login credentials (not money accounts — see FinancialAccount)
+model Account {
+  id                    String    @id @db.Uuid
+  accountId             String
+  providerId            String
+  userId                String    @db.Uuid
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @db.Uuid
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+}
+
+// Existence of a Profile row = profile complete (FR-003)
+model Profile {
+  id         String   @id @db.Uuid
+  userId     String   @unique @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName  String
+  lastName   String
+  address    String
+  city       String
+  state      String
+  postalCode String
+  country    String
+  phone      String
+  timeZone   String
+  avatarUrl  String
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+}
+
+// ---------- Money sources ----------
+
+model FinancialAccount {
+  id             String               @id @db.Uuid
+  userId         String               @db.Uuid
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  type           FinancialAccountType
+  currency       Currency
+  openingBalance Decimal              @db.Decimal(14, 2)
+  currentBalance Decimal              @db.Decimal(14, 2)
+  address        String?
+  city           String?
+  postalCode     String?
+  state          String?
+  country        String?
+  phone          String?
+  createdAt      DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @db.Timestamptz(3)
+
+  transactions Transaction[]
+
+  @@unique([userId, name])
+}
+
+model Payor {
+  id          String    @id @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  type        PayorType
+  currency    Currency
+  address     String?
+  city        String?
+  postalCode  String?
+  state       String?
+  country     String?
+  phone       String?
+  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+
+  transactions Transaction[]
+
+  @@unique([userId, name])
+}
+
+model Vendor {
+  id          String     @id @db.Uuid
+  userId      String     @db.Uuid
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  type        VendorType
+  currency    Currency
+  address     String?
+  city        String?
+  postalCode  String?
+  state       String?
+  country     String?
+  phone       String?
+  createdAt   DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime   @updatedAt @db.Timestamptz(3)
+
+  transactions Transaction[]
+
+  @@unique([userId, name])
+}
+
+// ---------- Budgets ----------
+
+// No-overlap per (user, currency) is an exclusion constraint added in raw SQL (FR-014)
+model Budget {
+  id                String   @id @db.Uuid
+  userId            String   @db.Uuid
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  description       String?
+  currency          Currency
+  startDate         DateTime @db.Date
+  endDate           DateTime @db.Date
+  alertThresholdPct Int      @default(10)
+  createdAt         DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
+
+  categories Category[]
+  alerts     Alert[]
+
+  @@index([userId, currency])
+}
+
+model Category {
+  id          String   @id @db.Uuid
+  budgetId    String   @db.Uuid
+  budget      Budget   @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  kind        FlowKind
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+
+  items BudgetItem[]
+
+  @@unique([budgetId, kind, name])
+}
+
+model BudgetItem {
+  id                     String      @id @db.Uuid
+  categoryId             String      @db.Uuid
+  category               Category    @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name                   String
+  description            String
+  startDate              DateTime    @db.Date
+  endDate                DateTime    @db.Date
+  estimatedAmount        Decimal     @db.Decimal(14, 2)
+  estimatedExecutionDate DateTime    @db.Date
+  frequency              Frequency
+  customInterval         Int?
+  customUnit             CustomUnit?
+  isSystem               Boolean     @default(false)
+  createdAt              DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime    @updatedAt @db.Timestamptz(3)
+
+  buckets      Bucket[]
+  transactions Transaction[]
+
+  @@unique([categoryId, name])
+}
+
+// Generated by the system from the item's schedule (research R7)
+model Bucket {
+  id                     String     @id @db.Uuid
+  itemId                 String     @db.Uuid
+  item                   BudgetItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  sequence               Int
+  startDate              DateTime   @db.Date
+  endDate                DateTime   @db.Date
+  estimatedExecutionDate DateTime   @db.Date
+  estimatedAmount        Decimal    @db.Decimal(14, 2)
+  actualAmount           Decimal    @default(0) @db.Decimal(14, 2)
+  actualDate             DateTime?  @db.Date
+  incomeEvaluatedAt      DateTime?  @db.Timestamptz(3)
+  createdAt              DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime   @updatedAt @db.Timestamptz(3)
+
+  transactions Transaction[]
+  alerts       Alert[]
+
+  @@unique([itemId, sequence])
+  @@index([itemId, startDate])
+}
+
+// ---------- Transactions and alerts ----------
+
+model Transaction {
+  id                 String           @id @db.Uuid
+  userId             String           @db.Uuid
+  user               User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind               FlowKind
+  amount             Decimal          @db.Decimal(14, 2)
+  currency           Currency
+  occurredAt         DateTime         @db.Timestamptz(3)
+  timeZone           String
+  localDate          DateTime         @db.Date
+  itemId             String           @db.Uuid
+  item               BudgetItem       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  // Restrict: services delete transactions explicitly before buckets go away
+  bucketId           String           @db.Uuid
+  bucket             Bucket           @relation(fields: [bucketId], references: [id], onDelete: Restrict)
+  financialAccountId String           @db.Uuid
+  financialAccount   FinancialAccount @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  payorId            String?          @db.Uuid
+  payor              Payor?           @relation(fields: [payorId], references: [id], onDelete: Restrict)
+  vendorId           String?          @db.Uuid
+  vendor             Vendor?          @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+  note               String?
+  createdAt          DateTime         @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, localDate(sort: Desc)])
+  @@index([itemId])
+  @@index([bucketId])
+  @@index([financialAccountId])
+  @@index([payorId])
+  @@index([vendorId])
+}
+
+// One active alert per condition: unique index NULLS NOT DISTINCT added in raw SQL (FR-042)
+model Alert {
+  id             String    @id @db.Uuid
+  userId         String    @db.Uuid
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  budgetId       String    @db.Uuid
+  budget         Budget    @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  bucketId       String?   @db.Uuid
+  bucket         Bucket?   @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  type           AlertType
+  expectedAmount Decimal   @db.Decimal(14, 2)
+  actualAmount   Decimal   @db.Decimal(14, 2)
+  thresholdPct   Int
+  readAt         DateTime? @db.Timestamptz(3)
+  dismissedAt    DateTime? @db.Timestamptz(3)
+  clearedAt      DateTime? @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId, dismissedAt, readAt])
+}
