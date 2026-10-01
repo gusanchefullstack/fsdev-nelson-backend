@@ -1,6 +1,7 @@
 import { toNodeHandler } from 'better-auth/node';
 import express from 'express';
-// Namespace import: Vercel's builder resolves helmet's CommonJS typings, where the default import isn't callable
+// Vercel's builder reads helmet's CommonJS typings, where neither the default import nor `.default`
+// type-checks as callable; at runtime `.default` is the middleware factory in both module systems
 import * as Helmet from 'helmet';
 import { pinoHttp } from 'pino-http';
 import { AppError } from './errors.js';
@@ -14,7 +15,8 @@ export const app = express();
 
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
-app.use(Helmet.default());
+const helmet = Helmet.default as unknown as () => express.RequestHandler;
+app.use(helmet());
 app.use(requestId);
 app.use(pinoHttp({ logger, customProps: (_req, res) => ({ requestId: res.locals.requestId as string }) }));
 
