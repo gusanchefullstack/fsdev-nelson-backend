@@ -29,8 +29,9 @@ function pgCode(err: unknown): string | undefined {
 function fromPrisma(err: Prisma.PrismaClientKnownRequestError): AppError | undefined {
   switch (err.code) {
     case 'P2002': {
-      const target = (err.meta?.target as string[] | string | undefined)?.toString() ?? '';
-      const field = target.includes('name') ? 'name' : target.includes('username') ? 'username' : '_';
+      // Driver adapters nest the constraint fields; search the whole metadata
+      const target = JSON.stringify(err.meta ?? {});
+      const field = /username/.test(target) ? 'username' : /"name"|_name_|\bname\b/.test(target) ? 'name' : '_';
       return new AppError(409, 'CONFLICT', 'That name is already in use. Please choose another.', {
         [field]: 'Already in use',
       });
