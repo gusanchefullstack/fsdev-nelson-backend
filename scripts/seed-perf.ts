@@ -72,7 +72,7 @@ async function main() {
     const income = item.category.kind === 'INCOME';
     rows.push({
       id: newId(), userId, kind: item.category.kind, amount: String(10 + (n % 90)), currency: 'USD' as const,
-      occurredAt: new Date(instant.epochMilliseconds), timeZone: 'America/Bogota', localDate: new Date(`${localDate}T00:00:00Z`),
+      occurredAt: new Date(instant.epochMilliseconds), timeZone: 'America/Bogota', localDate: new Date(`${localDate.toString()}T00:00:00Z`),
       itemId: item.id, bucketId: bucket.id, financialAccountId: account.id,
       payorId: income ? payor.id : null, vendorId: income ? null : vendor.id,
     });
